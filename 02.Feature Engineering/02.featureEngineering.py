@@ -300,3 +300,173 @@ df[df_scores < th]
 # Bunlar neden aykırı?
 df.describe([0.01,0.05,0.75,0.9,0.99]).T
 
+
+# Eksik Değerler(Missing Values)
+"""
+Gözlemlerde eksiklik olma durumunu ifade eder.
+Eksik veri problemi nasıl çözülür?
+- Eksik verileri silmek
+- Değer Atama Yöntemleri
+- Tahmine Dayalı Yöntemler
+
+Eksik veri ile çalışırken göz önünde bulundurulması gereken en önemli konu:
+Eksik verinin rassallığıdır. Eksikliğin rastgele oluşup oluşmadığıdır.
+
+Eksik değere sahip gözlemlerinn veri setinden direkt çıkarılması ve rassallığın incelenmemesi, yapılacak istatistiksel çıkarımların ve modelleme çalışmalarının güvenirliliğini düşürecektir. (Alpar, 2011)
+
+Eksik gözlemlerin veri setinden direk çıkarılabilmesi için veri setindeki eksikliğin bazı durumlarda kısmen bazı durumlarda tamamen rastlantısal olarak oluşmuş olması gerekmektedir. Eğer eksiklikler değişkenler ile ilişkili olarak ortaya çıkan yapısal problemler ile meydana gelmiş ise bu durumda yapılacak silme işlemleri ciddi yanlılıklara sebep olabilecektir. (Tabachnick ve Fidell, 1996)
+
+"""
+
+# Eksik Değerlerin Yakalanması
+df = load()
+df.head()
+
+# Eksik gözlem var mı?
+df.isnull().values.any()
+
+# Değişkenlerdeki eksik değer sayısı
+df.isnull().sum()
+
+# Eksik olmayan (dolu) olan değerleri sorgulamak istersek:
+df.notnull().sum()
+
+# Veri setindeki toplam eksik değer sayısına ulaşmak istersek:
+df.isnull().sum().sum()
+
+# En az bir tane eksik değişkene sahip olan gözlemleri görmek istersek:
+# df[df.isnull().any(axis=1)] # Çok fazla değer var
+df[df.isnull().any(axis=1)].head()
+
+# Tam olan gözlemleri görmek istersek:
+# df[df.notnull().all(axis=1)] # Çok fazla değer var
+df[df.notnull().all(axis=1)].head()
+
+
+# Azalan Sıralama
+df.isnull().sum().sort_values(ascending=False)
+
+(df.isnull().sum() / df.shape[0] * 100).sort_values(ascending=False)
+
+# Sadece eksiklik olan değişken isimlerini görmek istersek:
+naCols = [col for col in df.columns if df[col].isnull().sum() > 0]
+print(naCols)
+
+def missing_values_table(dataframe, na_name = False):
+    na_columns = [col for col in dataframe.columns if dataframe[col].isnull().sum() > 0]
+    n_miss = dataframe[na_columns].isnull().sum().sort_values(ascending=False)
+    ratio = (dataframe[na_columns].isnull().sum() / dataframe.shape[0] * 100).sort_values(ascending=False)
+    missing_df = pd.concat([n_miss, np.round(ratio, 2)], axis=1, keys=['n_miss', 'ratio'])
+    print(missing_df, end = "\n")
+
+    if na_name:
+        return na_columns
+
+missing_values_table(df)
+# Değişken isimlerini görmek istersek ikinci argumana True veriyoruz:
+
+missing_values_table(df,True)
+
+
+# Eksik Değer Probleminin Çözümü
+# Çözüm 1 : Eksik değerleri silmek
+print(df.dropna().shape) # Eksik değerleri kaldırıp veri setini yeniden oluşturuyoruz.
+# Verimli değildir. Çünkü 891 gözlemden 183 kaldı.
+
+# Çözüm 2 : Değer Atama Yöntemleri
+df["Age"].fillna(df["Age"].mean()).isnull().sum()
+df["Age"].fillna(df["Age"].median()).isnull().sum()
+df["Age"].fillna(0).isnull().sum() # Sabit değer ataması da yapılabilir.
+
+df.apply(lambda x: x.fillna(x.mean()) if x.dtype != "O" else x, axis=0).head()
+
+dff = df.apply(lambda x: x.fillna(x.mean()) if x.dtype != "O" else x, axis=0).head()
+dff.isnull().sum().sort_values(ascending=False)
+
+df["Embarked"].fillna(df["Embarked"].mode()[0]).isnull().sum()
+df["Embarked"].fillna("missing")
+df.apply(lambda x: x.fillna(x.mode()[0]) if ((x.dtype == "O") & (len(x.unique()) <= 10)) else x, axis=0).isnull().sum()
+
+
+# Kategorik Değişken Kırılımında Değer Atama
+
+df.groupby("Sex")["Age"].mean()
+df["Age"].mean()
+
+df["Age"].fillna(df.groupby("Sex")["Age"].transform("mean")).isnull().sum()
+
+df.loc[(df["Age"].isnull()) & (df["Sex"] == "female"),"Age"] = df.groupby("Sex")["Age"].mean()["female"]
+df.loc[(df["Age"].isnull()) & (df["Sex"] == "male"),"Age"] = df.groupby("Sex")["Age"].mean()["male"]
+df.isnull().sum()
+
+# Çözüm 3 : Tahmine Dayalı Atama İşlemi
+
+df = load()
+catCols, numCols, catButCar = grab_col_names(df)
+numCols = [col for col in numCols if col not in "PassengerId"]
+# Encoding bölümünde detaylı anlatılacak olan kategorik değişkenlerin sınıflarını numerik hale getiren ifade:
+dff = pd.get_dummies(df[catCols + numCols],drop_first=True)
+dff.head()
+# Tahmine dayalı atama işlemi yapabilmemiz için değişkenleri standarlaştırmalıyız:
+from sklearn.preprocessing import MinMaxScaler
+
+scaler = MinMaxScaler()
+dff = pd.DataFrame(scaler.fit_transform(dff), columns=dff.columns)
+dff.head()
+
+# KNN uygulanması:
+from sklearn.impute import KNNImputer
+imputer = KNNImputer(n_neighbors=5)
+dff = pd.DataFrame(imputer.fit_transform(dff), columns=dff.columns)
+dff.head()
+
+# Doldurulan yerleri görmek için standartlaştırma işlemini geri alalım.
+dff = pd.DataFrame(scaler.inverse_transform(dff), columns=dff.columns)
+
+dff.head()
+
+df = load()
+
+# Şimdi age_imputed_column değişkeni oluşturup yeni age değişkenini atayalım:
+df["age_imputed_column"] = dff[["Age"]]
+df.loc[df["Age"].isnull(), ["Age" , "age_imputed_column"]]
+
+df.loc[df["Age"].isnull()]
+
+# Veri setini tanımlayalım.
+df = load()
+
+# Sayısal değişkenleri direk medyan ile doldurma
+df.apply(lambda x: x.fillna(x.median()) if x.dtype != "O" else x, axis=0).isnull().sum()
+
+
+df.apply(lambda x: x.fillna(x.mode()[0]) if (x.dtype == "O" and len(x.unique()) < 10) else x, axis=0).isnull().sum()
+
+# Kategorik değişken kırılımında sayısal değişkenleri doldurmak
+df["Age"].fillna(df.groupby("Sex")["Age"].transform("mean")).isnull().sum()
+
+
+# Gelişmiş Analizler
+msno.bar(df)
+plt.show()
+
+msno.matrix(df)
+plt.show()
+
+msno.heatmap(df)
+plt.show()
+
+missing_values_table(df,True)
+
+na_cols = missing_values_table(df,True)
+
+def missing_vs_target(dataframe,target,na_columns):
+    temp_df = dataframe.copy()
+    for col in na_columns:
+        temp_df[col + "_NA_FLAG"] = np.where(temp_df[col].isnull(),1,0)
+    na_flags = temp_df.loc[:,temp_df.columns.str.contains("_NA_")].columns
+    for col in na_flags:
+        print(pd.DataFrame({"TARGET_MEAN": temp_df.groupby(col)[target].mean(),
+                            "Count": temp_df.groupby(col)[target].count()}), end="\n\n\n")
+
+missing_vs_target(df,"Survived",na_cols)

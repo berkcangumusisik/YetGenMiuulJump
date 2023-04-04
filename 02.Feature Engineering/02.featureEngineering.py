@@ -470,3 +470,194 @@ def missing_vs_target(dataframe,target,na_columns):
                             "Count": temp_df.groupby(col)[target].count()}), end="\n\n\n")
 
 missing_vs_target(df,"Survived",na_cols)
+
+"""
+Encoding Starling
+Encoding değişkenlerin temsil şekillerinin değiştirilmesidir.
+Label Encoding & Binary Encoding
+Kategorik değişkenlerin sınıflarını yeniden kodlamak demektir.Mesela education yani eğitim açısından düşündüğümüzde ilkokul 0'ken PHD 5 olarak kodlanır.
+Encoding neden uygulanır
+Veri setini, makine öğrenmesi yöntemlerini kullanmak istediğimizde algoritmaların istediği (aradığı) veri seti yapısına çevirmek için encoding uygulanır. (İstenilen standarta çevirmek için)
+"""
+
+df = load()
+df.head()
+df["Sex"].head()
+
+from sklearn.preprocessing import LabelEncoder
+le = LabelEncoder()
+
+le.fit_transform(df["Sex"])[0:5] # le.fit_tansform() ile değişkeni numerik hale getirdik.
+
+le.inverse_transform([0,1 ]) # le.inverse_transform() ile değişkeni kategorik hale getirdik.
+
+def labelEncoder(dataframe, binary_col):
+    le = LabelEncoder()
+    dataframe[binary_col] = le.fit_transform(dataframe[binary_col])
+    return dataframe
+# Binary yani iki kategorik degişkene sahip değişkenleri tespit edelim.
+binaryCols = [col for col in df.columns if df[col].dtype not in ["int64", "float64"]
+               and df[col].nunique() == 2]  #unique().len() == 2 diyemeyiz çünkü unique eksik değerleri de sınıf olarak görür.
+
+binaryCols
+
+for col in binaryCols:
+    df = labelEncoder(df, col)
+
+df[binaryCols].head()
+
+df = load_application_train()
+binaryCols = [col for col in df.columns if df[col].dtype not in ["int64", "float64"]
+               and df[col].nunique() == 2]
+for col in binaryCols:
+    labelEncoder(df,col)
+df[binaryCols].head()
+
+
+# One Hot Encoding
+"""
+One-Hot Encoding, esasen kategorik değişkenlerin ikili vektörler olarak temsilidir.
+Bu kategorik değerler ilk olarak tamsayı değerlere eşlenir.
+
+Her bir tamsayı değeri daha sonra tamamı 0 olan bir ikili vektör olarak temsil edilir (1 olarak işaretlenen tamsayının dizini hariç).
+"""
+
+df = load()
+df.head()
+
+pd.get_dummies(df, columns=["Embarked"]).head() # get_dummies() ile değişkeni numerik hale getirdik.
+
+pd.get_dummies(df,columns=['Embarked'],drop_first=True).head() #drop_first=True ile ilk sınıfını atıyoruz. Dummy tuzağına düşmeyi önler.
+# get_dummies() ile kategorik değerleri dummy değerlerine dönüştürür.
+
+pd.get_dummies(df,columns=['Embarked'],dummy_na=True).head() # dummy_na=True ile NA değerlerini dummy değerine dönüştürür.
+
+pd.get_dummies(df,columns=['Sex'],drop_first=True).head()
+pd.get_dummies(df,columns=['Sex',"Embarked"],drop_first=True).head()
+
+
+def one_hot_encoder(dataframe, categorical_cols, drop_firt = True):
+    dataframe = pd.get_dummies(dataframe, columns=categorical_cols, drop_first=drop_firt)
+    return dataframe
+
+df = load()
+catCols, numCols, catButCar = grab_col_names(df)
+
+ohe_cols = [col for col in catCols if 10 >= df[col].nunique() > 2]
+
+one_hot_encoder(df,ohe_cols).head()
+
+
+"""
+Rare Encoding
+Ayırt edici olmayan gözlemlerden (one hot encoding sonrası değişken) kurtulmayı sağlar.
+Yararlı olduğu kadar zararlı da olabilir.
+1. Kategorik değişkenlerin azlık-çokluk durumunun analiz edilmesi
+2. Rare kategoriler ile bağımlı değişken arasındaki ilişkinin analiz edilmesi
+3. Rare encoder yazacağız.
+"""
+# 1. Kategorik değişkenlerin azlık-çokluk durumunun analiz edilmesi
+
+df = load_application_train()
+df["NAME_EDUCATION_TYPE"].value_counts() # value_counts() ile değişkenin sınıflarını ve sınıf sayılarını görebiliriz.
+
+cat_cols, num_cols, cat_but_car = grab_col_names(df)
+
+def cat_summary(dataframe, categorical_cols, plot=False):
+    print(pd.DataFrame({categorical_cols: dataframe[categorical_cols].value_counts(),
+                        "Ratio": 100 * dataframe[categorical_cols].value_counts() / len(dataframe)}))
+    print("##########################################")
+
+    if plot:
+        sns.countplot(x=dataframe[categorical_cols], data=dataframe)
+        plt.show(block=True)
+
+for col in cat_cols:
+    cat_summary(df,col,True)
+
+# Bu analizi tüm kategorik değişkenlerde yapmak için fonksiyon yazalım.
+def rare_analyzer(dataframe, target, cat_cols):
+    for col in cat_cols:
+        print(col, ":", len(dataframe[col].value_counts()))
+        print(pd.DataFrame({"COUNT": dataframe[col].value_counts(), "RATIO": dataframe[col].value_counts() / len(dataframe),
+                        "TARGET_MEAN": dataframe.groupby(col)[target].mean()}), end="\n\n\n")
+
+
+rare_analyzer(df,"TARGET",cat_cols)
+
+
+def rare_encoder(dataframe, target, cat_cols):
+    for col in cat_cols:
+
+        print(col, ":", len(dataframe[col].value_counts()))
+        print(pd.DataFrame({"COUNT": dataframe[col].value_counts(), "RATIO": dataframe[col].value_counts() / len(dataframe), "TARGET_MEAN": dataframe.groupby(col)["TARGET"].mean()}), end="\n\n\n")
+
+rare_analyzer(df,"TARGET",cat_cols)
+
+
+# 3.Rare encoder yazacağız.
+
+def rare_encoder(dataframe, rare_perc):
+    temp_df = dataframe.copy()
+    rare_columns = [col for col in temp_df.columns if temp_df[col].dtypes == "O"
+                    and (temp_df[col].value_counts() / len(temp_df) < rare_perc).any(axis=None)]
+
+    for var in rare_columns:
+        tmp = temp_df[var].value_counts() / len(temp_df)
+        rare_labels = tmp[tmp < rare_perc].index
+        temp_df[var] = np.where(temp_df[var].isin(rare_labels), "Rare", temp_df[var])
+    return temp_df
+
+newDf =  rare_encoder(df, 0.01) # Toplulaştırma yapılmış dataframe.
+rare_analyzer(newDf,"TARGET",cat_cols)
+
+
+"""
+Özellik Ölçeklendirme ( Feature Scaling )
+Tüm değişkenler eşit şartlar altında değerlendirilebilmek için ölçeklendirilmelidir.
+
+Eğitim sürelerini kısaltmak için (Hata yönetimi ve hataların daha kısa sürede çözülmesi)
+
+Uzaklık temelli yöntemlerde büyük değerler dominantlık göstermektedirler.
+
+Yöntem StandartScaler: Klasik standarlaştırma. Ortalamayı çıkar, standart sapmaya böl. z = (x - u) / s
+"""
+
+from sklearn.preprocessing import StandardScaler
+df = load()
+ss = StandardScaler()
+df["Age_standart_scaled"] = ss.fit_transform(df[["Age"]])
+df.head()
+
+
+# RobustScaler: Medyanı çıkar IQR'a böl.
+
+from sklearn.preprocessing import RobustScaler
+rs = RobustScaler()
+df["Age_robust_scaled"] = rs.fit_transform(df[["Age"]])
+df.describe().T
+
+"""
+MinMaxScaler: Verilen 2 değer arasında değişken dönüşümü.
+
+X_std = (X - X.min(axis=0)) / (X.max(axis=0) - X.min(axis=0)) X_scaled = X_std * (max - min) + min
+"""
+
+mms = MinMaxScaler()
+df["Age_min_max_scaler"] = mms.fit_transform(df[["Age"]])
+df.describe().T
+df.head()
+
+
+ageCols = [col for col in df.columns if "Age" in col]
+def numSummary(dataframe, numericalCol, plot=False):
+    quantiles = [0.05,0.10,0.20,0.30,0.40,0.50,0.60,0.70,0.80,0.90,0.95,0.99]
+    print(dataframe[numericalCol].describe(quantiles).T)
+
+    if plot:
+        dataframe[numericalCol].hist(bins=20)
+        plt.xlabel(numericalCol)
+        plt.title(numericalCol)
+        plt.show(block=True)
+for col in ageCols:
+    numSummary(df,col,plot=True)

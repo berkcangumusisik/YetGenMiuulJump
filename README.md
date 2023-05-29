@@ -1,6 +1,6 @@
 <div align= "center">
   <h1> YetGen Jump & Miuul Eğitim Programı</h1>
-  <img src="/Görseller/YetGenMiuul.jpg">
+  <img src="/Görseller/YetGenMiuul.jpg" width= "200px">
 </div>
 
 
